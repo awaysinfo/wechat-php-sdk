@@ -31,17 +31,8 @@
      * @param boolean $debug 调试模式，默认为关闭
      */
     public function __construct($token, $debug = FALSE) {
-      if (!$this->validateSignature($token)) {
-        exit('签名验证失败');
-      }
-      
-      if ($this->isValid()) {
-        // 网址接入验证
+      if ($this->isValid() && $this->validateSignature($token)) {
         exit($_GET['echostr']);
-      }
-      
-      if (!isset($GLOBALS['HTTP_RAW_POST_DATA'])) {
-        exit('缺少数据');
       }
 
       $this->debug = $debug;
@@ -64,16 +55,12 @@
     }
 
     /**
-     * 验证此次请求的签名信息
+     * 判断验证请求的签名信息是否正确
      *
      * @param  string $token 验证信息
      * @return boolean
      */
     private function validateSignature($token) {
-      if ( ! (isset($_GET['signature']) && isset($_GET['timestamp']) && isset($_GET['nonce']))) {
-        return FALSE;
-      }
-      
       $signature = $_GET['signature'];
       $timestamp = $_GET['timestamp'];
       $nonce = $_GET['nonce'];
@@ -145,6 +132,13 @@
      * @return void
      */
     protected function onLink() {}
+ 
+    /**
+     * 收到语音消息时触发，用于子类重写
+     *
+     * @return void
+     */
+    protected function onVoice() {}
 
     /**
      * 收到未知类型消息时触发，用于子类重写
@@ -187,6 +181,28 @@
     protected function responseNews($items, $funcFlag = 0) {
       exit(new NewsResponse($this->getRequest('fromusername'), $this->getRequest('tousername'), $items, $funcFlag));
     }
+	
+    /**
+     * 回复语音消息
+     * @param  string   $mediaId    通过上传多媒体文件，得到的id
+     * @param  integer $funcFlag 	默认为0，设为1时星标刚才收到的消息
+     * @return void
+     */
+    protected function responseVoice($mediaId, $funcFlag = 0) {
+      exit(new VoiceResponse($this->getRequest('fromusername'), $this->getRequest('tousername'), $mediaId, $funcFlag));
+    }
+	
+	
+    /**
+     * 回复视屏消息
+     * @param  string  $mediaId 		通过上传多媒体文件，得到的id
+     * @param  string  $thumbMediaId    缩略图的媒体id，通过上传多媒体文件，得到的id
+     * @param  integer $funcFlag 		默认为0，设为1时星标刚才收到的消息
+     * @return void
+     */
+    protected function responseVideo($mediaId, $thumbMediaId, $funcFlag = 0) {
+      exit(new VideoResponse($this->getRequest('fromusername'), $this->getRequest('tousername'), $mediaId, $thumbMediaId, $funcFlag));
+    }
 
     /**
      * 分析消息类型，并分发给对应的函数
@@ -225,6 +241,10 @@
 
         case 'link':
           $this->onLink();
+          break;
+
+        case 'voice':
+          $this->onVoice();
           break;
 
         default:
@@ -291,7 +311,6 @@ ERR;
     protected $toUserName;
     protected $fromUserName;
     protected $funcFlag;
-    protected $template;
 
     public function __construct($toUserName, $fromUserName, $funcFlag) {
       $this->toUserName = $toUserName;
@@ -310,11 +329,7 @@ ERR;
 
     protected $content;
 
-    public function __construct($toUserName, $fromUserName, $content, $funcFlag = 0) {
-      parent::__construct($toUserName, $fromUserName, $funcFlag);
-
-      $this->content = $content;
-      $this->template = <<<XML
+    protected $template = <<<XML
 <xml>
   <ToUserName><![CDATA[%s]]></ToUserName>
   <FromUserName><![CDATA[%s]]></FromUserName>
@@ -324,6 +339,10 @@ ERR;
   <FuncFlag>%s</FuncFlag>
 </xml>
 XML;
+
+    public function __construct($toUserName, $fromUserName, $content, $funcFlag = 0) {
+      parent::__construct($toUserName, $fromUserName, $funcFlag);
+      $this->content = $content;
     }
 
     public function __toString() {
@@ -348,14 +367,7 @@ XML;
     protected $musicUrl;
     protected $hqMusicUrl;
 
-    public function __construct($toUserName, $fromUserName, $title, $description, $musicUrl, $hqMusicUrl, $funcFlag) {
-      parent::__construct($toUserName, $fromUserName, $funcFlag);
-
-      $this->title = $title;
-      $this->description = $description;
-      $this->musicUrl = $musicUrl;
-      $this->hqMusicUrl = $hqMusicUrl;
-      $this->template = <<<XML
+    protected $template = <<<XML
 <xml>
   <ToUserName><![CDATA[%s]]></ToUserName>
   <FromUserName><![CDATA[%s]]></FromUserName>
@@ -370,6 +382,13 @@ XML;
   <FuncFlag>%s</FuncFlag>
 </xml>
 XML;
+
+    public function __construct($toUserName, $fromUserName, $title, $description, $musicUrl, $hqMusicUrl, $funcFlag) {
+      parent::__construct($toUserName, $fromUserName, $funcFlag);
+      $this->title = $title;
+      $this->description = $description;
+      $this->musicUrl = $musicUrl;
+      $this->hqMusicUrl = $hqMusicUrl;
     }
 
     public function __toString() {
@@ -394,11 +413,7 @@ XML;
 
     protected $items = array();
 
-    public function __construct($toUserName, $fromUserName, $items, $funcFlag) {
-      parent::__construct($toUserName, $fromUserName, $funcFlag);
-
-      $this->items = $items;
-      $this->template = <<<XML
+    protected $template = <<<XML
 <xml>
   <ToUserName><![CDATA[%s]]></ToUserName>
   <FromUserName><![CDATA[%s]]></FromUserName>
@@ -409,8 +424,12 @@ XML;
     %s
   </Articles>
   <FuncFlag>%s</FuncFlag>
-</xml>
+</xml>'
 XML;
+
+    public function __construct($toUserName, $fromUserName, $items, $funcFlag) {
+      parent::__construct($toUserName, $fromUserName, $funcFlag);
+      $this->items = $items;
     }
 
     public function __toString() {
@@ -435,14 +454,8 @@ XML;
     protected $description;
     protected $picUrl;
     protected $url;
-    protected $template;
 
-    public function __construct($title, $description, $picUrl, $url) {
-      $this->title = $title;
-      $this->description = $description;
-      $this->picUrl = $picUrl;
-      $this->url = $url;
-      $this->template = <<<XML
+    protected $template = <<<XML
 <item>
   <Title><![CDATA[%s]]></Title>
   <Description><![CDATA[%s]]></Description>
@@ -450,6 +463,12 @@ XML;
   <Url><![CDATA[%s]]></Url>
 </item>
 XML;
+
+    public function __construct($title, $description, $picUrl, $url) {
+      $this->title = $title;
+      $this->description = $description;
+      $this->picUrl = $picUrl;
+      $this->url = $url;
     }
 
     public function __toString() {
@@ -458,6 +477,85 @@ XML;
         $this->description,
         $this->picUrl,
         $this->url
+      );
+    }
+
+  }
+
+  /**
+   * 用于回复的语音消息类型
+   */
+  class VoiceResponse extends WechatResponse {
+
+    protected $MediaId;
+
+    protected $template = <<<XML
+<xml>
+  <ToUserName><![CDATA[%s]]></ToUserName>
+  <FromUserName><![CDATA[%s]]></FromUserName>
+  <CreateTime>%s</CreateTime>
+  <MsgType><![CDATA[voice]]></MsgType>
+  <Voice>
+   <MediaId><![CDATA[%s]]></MediaId>
+  </Voice>
+  <FuncFlag>%s</FuncFlag>
+</xml>'
+XML;
+
+    public function __construct($toUserName, $fromUserName, $mediaId, $funcFlag) {
+      parent::__construct($toUserName, $fromUserName, $funcFlag);
+      $this->MediaId = $mediaId;
+    }
+
+    public function __toString() {
+      return sprintf($this->template,
+        $this->toUserName,
+        $this->fromUserName,
+        time(),
+        $this->MediaId,
+        $this->funcFlag
+      );
+    }
+
+  }
+  
+  
+    /**
+   * 用于回复的视频消息类型
+   */
+  class VideoResponse extends WechatResponse {
+
+    protected $MediaId;
+	protected $ThumbMediaId;
+
+    protected $template = <<<XML
+<xml>
+  <ToUserName><![CDATA[%s]]></ToUserName>
+  <FromUserName><![CDATA[%s]]></FromUserName>
+  <CreateTime>%s</CreateTime>
+  <MsgType><![CDATA[video]]></MsgType>
+  <Video>
+   <MediaId><![CDATA[%s]]></MediaId>
+   <ThumbMediaId><![CDATA[%s]]></ThumbMediaId>
+  </Video> 
+  <FuncFlag>%s</FuncFlag>
+</xml>'
+XML;
+
+    public function __construct($toUserName, $fromUserName, $mediaId, $thumbMediaId,$funcFlag) {
+      parent::__construct($toUserName, $fromUserName, $funcFlag);
+      $this->MediaId = $mediaId;
+	  $this->ThumbMediaId=$thumbMediaId;
+    }
+
+    public function __toString() {
+      return sprintf($this->template,
+        $this->toUserName,
+        $this->fromUserName,
+        time(),
+        $this->MediaId,
+		$this->ThumbMediaId,
+        $this->funcFlag
       );
     }
 
