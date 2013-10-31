@@ -75,6 +75,15 @@
     }
 
     /**
+     * 收到语音消息时触发，回复收到的语音地址
+     *
+     * @return void
+     */
+    protected function onVoice() {
+      $this->responseVoice( $this->getRequest('MediaId'));
+    }
+
+    /**
      * 收到未知类型消息时触发，回复收到的消息类型
      *
      * @return void
